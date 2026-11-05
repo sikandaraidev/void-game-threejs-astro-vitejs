@@ -79,18 +79,77 @@
   visibility: hidden;
 }
 
-/* Corners */
-.seat {
+/* Crew panel (top left) */
+.crew {
   position: absolute;
   inset-block-start: var(--space-3);
   inset-inline-start: var(--space-3);
   display: grid;
   gap: var(--space-1);
+  padding: var(--space-2);
+  border: var(--hairline);
+  background: color-mix(in oklab, var(--color-void-raised) 60%, transparent);
 }
 
-.seatName {
-  font-size: var(--text-sm);
+.crewRow {
+  display: grid;
+  grid-template-columns: 1.6em 7.5em auto;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-ink-dim);
+}
+
+.crewRow[data-active='true'] {
   color: var(--color-cold);
+}
+
+.key {
+  display: grid;
+  place-items: center;
+  block-size: 1.5em;
+  border: 1px solid currentcolor;
+}
+
+.crewName {
+  white-space: nowrap;
+}
+
+.crewWho {
+  justify-self: end;
+}
+
+/* Active power-ups (bottom centre) */
+.buffs {
+  position: absolute;
+  inset-block-end: var(--space-3);
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.chip {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid currentcolor;
+  background: color-mix(in oklab, var(--color-void) 70%, transparent);
+}
+
+.chip[data-visible='false'] {
+  display: none;
+}
+
+.chipHot {
+  color: var(--color-flash);
+}
+
+.chipCold {
+  color: var(--color-cold);
+}
+
+.chipSignal,
+.chipMissile {
+  color: var(--color-signal);
 }
 
 .dim {
@@ -179,6 +238,14 @@
 
 .reticle[data-locked='true'] {
   border-color: var(--color-signal);
+}
+
+/* In a turret the reticle is fixed at the centre of the view. */
+.reticle[data-mode='center'] {
+  inset-inline-start: 50%;
+  inset-block-start: 50%;
+  inline-size: 46px;
+  block-size: 46px;
 }
 
 /* Contextual hints (Paradox of the Active User) */

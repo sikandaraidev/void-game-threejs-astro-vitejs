@@ -2,207 +2,262 @@ import {
   BoxGeometry,
   Color,
   DynamicDrawUsage,
-  Group,
-  IcosahedronGeometry,
+  Euler,
   InstancedMesh,
-  Mesh,
+  Matrix4,
   MeshStandardMaterial,
   Object3D,
-  OctahedronGeometry,
+  Quaternion,
   SphereGeometry,
-  TetrahedronGeometry,
-  TorusGeometry,
   Vector3,
+  type BufferGeometry,
   type Scene,
 } from 'three/webgpu';
-import { BOSS_NODES, MAX_ENEMIES, MAX_ENEMY_BOLTS, MAX_PLAYER_BULLETS } from '../../sim/constants';
+import { MAX_ENEMIES, MAX_ENEMY_BOLTS, MAX_PLAYER_BULLETS } from '../../sim/constants';
 import { BULLET_STRIDE, ENEMY_STRIDE, EnemyKind, type Snapshot } from '../../sim/types';
+import { mothGeometry, needleGeometry } from '../models/hollow';
+import { createOssuary } from '../models/ossuary';
 
 /**
- * Draws a snapshot. Everything is instanced (one draw call per kind).
- * Positions are dead-reckoned: snapshot position + velocity × time since the snapshot,
- * so motion stays smooth at any display refresh rate.
+ * Draws a snapshot. Everything is instanced (a couple of draw calls per ship class).
+ * Positions are dead-reckoned (position + velocity × time since snapshot) so motion stays smooth
+ * at any refresh rate. Fighters face along their velocity RELATIVE to the VESPER: that is the
+ * motion the player actually sees, so passes and loops read correctly.
  */
 export interface Entities {
   update(s: Snapshot, since: number, time: number): void;
   dispose(): void;
 }
 
-function instanced(
-  geo: BoxGeometry | SphereGeometry | OctahedronGeometry | TetrahedronGeometry,
-  mat: MeshStandardMaterial,
-  max: number,
-): InstancedMesh {
+function instanced(geo: BufferGeometry, mat: MeshStandardMaterial, max: number, scene: Scene): InstancedMesh {
   const mesh = new InstancedMesh(geo, mat, max);
   mesh.instanceMatrix.setUsage(DynamicDrawUsage);
   mesh.count = 0;
   mesh.frustumCulled = false;
+  scene.add(mesh);
   return mesh;
 }
 
 export function createEntities(scene: Scene): Entities {
-  // Unmade (known-space tier): bioluminescent crystal, violet. Player = cyan; danger = amber.
-  const shardMat = new MeshStandardMaterial({
-    color: new Color('#1b1430'),
-    emissive: new Color('#b98cff'),
-    emissiveIntensity: 1.3,
-    roughness: 0.25,
-    metalness: 0.4,
-    flatShading: true,
+  const black = new Color('#000000');
+  const hullMat = new MeshStandardMaterial({ color: new Color('#2a2530'), roughness: 0.55, metalness: 0.7 });
+  const rustMat = new MeshStandardMaterial({ color: new Color('#7a3e2a'), roughness: 0.8, metalness: 0.3 });
+  const glowMat = new MeshStandardMaterial({
+    color: black,
+    emissive: new Color('#c9b8ff'),
+    emissiveIntensity: 2.6,
   });
-  const chaserMat = new MeshStandardMaterial({
-    color: new Color('#1d0f24'),
-    emissive: new Color('#ff5fd2'),
-    emissiveIntensity: 1.5,
-    roughness: 0.3,
-    metalness: 0.5,
-    flatShading: true,
+  const membraneMat = new MeshStandardMaterial({
+    color: black,
+    emissive: new Color('#b48cff'),
+    emissiveIntensity: 2.2,
+    side: 2,
   });
   const playerBoltMat = new MeshStandardMaterial({
-    color: new Color('#000000'),
+    color: black,
     emissive: new Color('#7ff0ff'),
     emissiveIntensity: 5,
   });
+  const missileMat = new MeshStandardMaterial({
+    color: black,
+    emissive: new Color('#ff6b3d'),
+    emissiveIntensity: 5,
+  });
   const enemyBoltMat = new MeshStandardMaterial({
-    color: new Color('#000000'),
+    color: black,
     emissive: new Color('#ffb347'),
     emissiveIntensity: 5,
   });
 
-  const shardGeo = new OctahedronGeometry(1, 0);
-  const chaserGeo = new TetrahedronGeometry(1.7, 0);
-  const pBoltGeo = new BoxGeometry(0.16, 0.16, 3.4);
-  const eBoltGeo = new SphereGeometry(0.6, 10, 8);
+  const needle = needleGeometry();
+  const moth = mothGeometry();
+  const pBoltGeo = new BoxGeometry(0.18, 0.18, 4);
+  const missileGeo = new BoxGeometry(0.4, 0.4, 2.2);
+  const eBoltGeo = new SphereGeometry(0.7, 10, 8);
 
-  const shards = instanced(shardGeo, shardMat, MAX_ENEMIES);
-  const chasers = instanced(chaserGeo, chaserMat, MAX_ENEMIES);
-  const pBolts = instanced(pBoltGeo, playerBoltMat, MAX_PLAYER_BULLETS);
-  const eBolts = instanced(eBoltGeo, enemyBoltMat, MAX_ENEMY_BOLTS);
-  scene.add(shards, chasers, pBolts, eBolts);
+  const needleHull = instanced(needle.hull, hullMat, MAX_ENEMIES, scene);
+  const needleRust = instanced(needle.rust, rustMat, MAX_ENEMIES, scene);
+  const needleGlow = instanced(needle.glow, glowMat, MAX_ENEMIES, scene);
+  const mothHull = instanced(moth.hull, hullMat, MAX_ENEMIES, scene);
+  const mothRust = instanced(moth.rust, rustMat, MAX_ENEMIES, scene);
+  const mothGlow = instanced(moth.glow, glowMat, MAX_ENEMIES, scene);
+  const mothWings = instanced(moth.wing, hullMat, MAX_ENEMIES * 4, scene);
+  const mothMembranes = instanced(moth.wingGlow, membraneMat, MAX_ENEMIES * 4, scene);
+  const pBolts = instanced(pBoltGeo, playerBoltMat, MAX_PLAYER_BULLETS, scene);
+  const missiles = instanced(missileGeo, missileMat, 64, scene);
+  const eBolts = instanced(eBoltGeo, enemyBoltMat, MAX_ENEMY_BOLTS, scene);
 
-  // The Warden: the first destination guardian. Body absorbs fire; the four amber nodes are the weak points.
-  const boss = new Group();
-  boss.visible = false;
-  const bossBodyGeo = new IcosahedronGeometry(13, 1);
-  const bossBodyMat = new MeshStandardMaterial({
-    color: new Color('#120d1e'),
-    emissive: new Color('#5b3cff'),
-    emissiveIntensity: 0.25,
-    roughness: 0.35,
-    metalness: 0.7,
-    flatShading: true,
-  });
-  boss.add(new Mesh(bossBodyGeo, bossBodyMat));
-  const ringGeo = new TorusGeometry(21, 0.7, 8, 96);
-  const ringMat = new MeshStandardMaterial({
-    color: new Color('#05040a'),
-    emissive: new Color('#b98cff'),
-    emissiveIntensity: 1.6,
-  });
-  const ring = new Mesh(ringGeo, ringMat);
-  boss.add(ring);
-  const nodeGeo = new SphereGeometry(2.6, 20, 14);
-  const nodeMats = BOSS_NODES.map(
-    () =>
-      new MeshStandardMaterial({
-        color: new Color('#000000'),
-        emissive: new Color('#ffb347'),
-        emissiveIntensity: 4,
-      }),
-  );
-  const nodes = BOSS_NODES.map((n, i) => {
-    const m = new Mesh(nodeGeo, nodeMats[i]);
-    m.position.set(n.x, n.y, n.z);
-    boss.add(m);
-    return m;
-  });
-  scene.add(boss);
+  const ossuary = createOssuary();
+  ossuary.root.visible = false;
+  scene.add(ossuary.root);
 
   const dummy = new Object3D();
   const look = new Vector3();
+  const wingLocal = new Matrix4();
+  const wingWorld = new Matrix4();
+  const membraneScale = new Matrix4();
+  const hinge = new Vector3();
+  const wingQuat = new Quaternion();
+  const wingEuler = new Euler(0, 0, 0, 'ZYX');
+  const one = new Vector3(1, 1, 1);
+  const deg = Math.PI / 180;
+
+  const setFighter = (
+    x: number,
+    y: number,
+    z: number,
+    rvx: number,
+    rvy: number,
+    rvz: number,
+    scale: number,
+  ): void => {
+    dummy.position.set(x, y, z);
+    dummy.scale.setScalar(scale);
+    const rl = Math.hypot(rvx, rvy, rvz);
+    // Models face -Z; Object3D.lookAt aims +Z, so look at the point BEHIND the direction of travel.
+    if (rl > 1) look.set(x - rvx, y - rvy, z - rvz);
+    else look.set(x, y, z + 1);
+    dummy.lookAt(look);
+    dummy.rotateZ(Math.max(-0.9, Math.min(0.9, -rvx * 0.02)));
+    dummy.updateMatrix();
+  };
 
   return {
     update(s, since, time) {
-      // Enemies
-      let ns = 0;
-      let nc = 0;
+      const sh = s.ship;
+      let nn = 0;
+      let nm = 0;
+      let nw = 0;
+      let nmem = 0;
       const e = s.enemies;
       for (let o = 0; o < e.length; o += ENEMY_STRIDE) {
-        const x = (e[o] ?? 0) + (e[o + 3] ?? 0) * since;
-        const y = (e[o + 1] ?? 0) + (e[o + 4] ?? 0) * since;
-        const z = (e[o + 2] ?? 0) + (e[o + 5] ?? 0) * since;
-        dummy.position.set(x, y, z);
-        if (e[o + 6] === EnemyKind.Shard) {
-          dummy.rotation.set(0, time * 1.4 + o, 0);
-          dummy.scale.set(2.3, 3.8, 2.3);
-          dummy.updateMatrix();
-          shards.setMatrixAt(ns++, dummy.matrix);
+        const vx = e[o + 3] ?? 0;
+        const vy = e[o + 4] ?? 0;
+        const vz = e[o + 5] ?? 0;
+        const x = (e[o] ?? 0) + vx * since;
+        const y = (e[o + 1] ?? 0) + vy * since;
+        const z = (e[o + 2] ?? 0) + vz * since;
+        const rvx = vx - sh.vx;
+        const rvy = vy - sh.vy;
+        const rvz = vz - sh.vz;
+        if (e[o + 6] === EnemyKind.Needle) {
+          setFighter(x, y, z, rvx, rvy, rvz, 1);
+          needleHull.setMatrixAt(nn, dummy.matrix);
+          needleRust.setMatrixAt(nn, dummy.matrix);
+          needleGlow.setMatrixAt(nn, dummy.matrix);
+          nn++;
         } else {
-          look.set(x + (e[o + 3] ?? 0), y + (e[o + 4] ?? 0), z + (e[o + 5] ?? 0) - 1);
-          dummy.scale.set(1.5, 1.5, 2.6);
-          dummy.lookAt(look);
-          dummy.rotateZ(time * 3);
-          dummy.updateMatrix();
-          chasers.setMatrixAt(nc++, dummy.matrix);
+          setFighter(x, y, z, rvx, rvy, rvz, 1);
+          mothHull.setMatrixAt(nm, dummy.matrix);
+          mothRust.setMatrixAt(nm, dummy.matrix);
+          mothGlow.setMatrixAt(nm, dummy.matrix);
+          nm++;
+          // Wings: folded back in cruise, spread wide before firing (the tell).
+          const open = e[o + 8] ?? 0;
+          const sweep = (78 - 70 * open) * deg;
+          const dihedral = (6 + 18 * open) * deg;
+          for (const side of [1, -1]) {
+            for (const v of [1, -1]) {
+              hinge.set(side * 1.2, v * 0.55, 0.6);
+              wingEuler.set(0, side > 0 ? -sweep : Math.PI + sweep, side * v * dihedral);
+              wingQuat.setFromEuler(wingEuler);
+              wingLocal.compose(hinge, wingQuat, one);
+              wingWorld.multiplyMatrices(dummy.matrix, wingLocal);
+              mothWings.setMatrixAt(nw++, wingWorld);
+              if (open > 0.05) {
+                membraneScale.makeScale(1, 1, open);
+                wingWorld.multiply(membraneScale);
+                mothMembranes.setMatrixAt(nmem++, wingWorld);
+              }
+            }
+          }
         }
       }
-      shards.count = ns;
-      chasers.count = nc;
-      shards.instanceMatrix.needsUpdate = true;
-      chasers.instanceMatrix.needsUpdate = true;
-
-      // Bolts
-      const drawBolts = (arr: Float32Array, mesh: InstancedMesh, oriented: boolean, pulse: number): void => {
-        let n = 0;
-        for (let o = 0; o < arr.length; o += BULLET_STRIDE) {
-          const vx = arr[o + 3] ?? 0;
-          const vy = arr[o + 4] ?? 0;
-          const vz = arr[o + 5] ?? 0;
-          dummy.position.set(
-            (arr[o] ?? 0) + vx * since,
-            (arr[o + 1] ?? 0) + vy * since,
-            (arr[o + 2] ?? 0) + vz * since,
-          );
-          dummy.rotation.set(0, 0, 0);
-          if (oriented) {
-            look.set(dummy.position.x + vx, dummy.position.y + vy, dummy.position.z + vz);
-            dummy.lookAt(look);
-          }
-          dummy.scale.setScalar(pulse);
-          dummy.updateMatrix();
-          mesh.setMatrixAt(n++, dummy.matrix);
-        }
+      for (const [mesh, n] of [
+        [needleHull, nn],
+        [needleRust, nn],
+        [needleGlow, nn],
+        [mothHull, nm],
+        [mothRust, nm],
+        [mothGlow, nm],
+        [mothWings, nw],
+        [mothMembranes, nmem],
+      ] as const) {
         mesh.count = n;
         mesh.instanceMatrix.needsUpdate = true;
-      };
-      drawBolts(s.playerBullets, pBolts, true, 1);
-      drawBolts(s.enemyBolts, eBolts, false, 1 + Math.sin(time * 18) * 0.18);
+      }
 
-      // Boss
-      if (s.boss) {
-        boss.visible = true;
-        // The Warden holds station ahead of the ship, so it moves at ship speed between snapshots.
+      // Bolts and missiles.
+      let np = 0;
+      let nmi = 0;
+      const pb = s.playerBullets;
+      for (let o = 0; o < pb.length; o += BULLET_STRIDE) {
+        const vx = pb[o + 3] ?? 0;
+        const vy = pb[o + 4] ?? 0;
+        const vz = pb[o + 5] ?? 0;
+        dummy.position.set(
+          (pb[o] ?? 0) + vx * since,
+          (pb[o + 1] ?? 0) + vy * since,
+          (pb[o + 2] ?? 0) + vz * since,
+        );
+        look.set(dummy.position.x + vx, dummy.position.y + vy, dummy.position.z + vz);
+        dummy.scale.setScalar(1);
+        dummy.lookAt(look);
+        dummy.updateMatrix();
+        if (pb[o + 6]) missiles.setMatrixAt(nmi++, dummy.matrix);
+        else pBolts.setMatrixAt(np++, dummy.matrix);
+      }
+      pBolts.count = np;
+      missiles.count = Math.min(nmi, 64);
+      pBolts.instanceMatrix.needsUpdate = true;
+      missiles.instanceMatrix.needsUpdate = true;
+
+      let ne = 0;
+      const eb = s.enemyBolts;
+      const pulse = 1 + Math.sin(time * 18) * 0.18;
+      for (let o = 0; o < eb.length; o += BULLET_STRIDE) {
+        dummy.position.set(
+          (eb[o] ?? 0) + (eb[o + 3] ?? 0) * since,
+          (eb[o + 1] ?? 0) + (eb[o + 4] ?? 0) * since,
+          (eb[o + 2] ?? 0) + (eb[o + 5] ?? 0) * since,
+        );
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.setScalar(pulse);
+        dummy.updateMatrix();
+        eBolts.setMatrixAt(ne++, dummy.matrix);
+      }
+      eBolts.count = ne;
+      eBolts.instanceMatrix.needsUpdate = true;
+
+      // The Ossuary holds station ahead of the ship, so it moves at ship velocity between snapshots.
+      if (s.boss && s.phase !== 'jump' && s.phase !== 'won') {
+        ossuary.root.visible = true;
         const holding = s.phase === 'boss' ? 1 : 0;
-        boss.position.set(s.boss.x, s.boss.y, s.boss.z + s.ship.vz * since * holding);
-        boss.rotation.y = time * 0.15;
-        ring.rotation.x = Math.PI / 2 + Math.sin(time * 0.3) * 0.25;
-        ring.rotation.y = time * 0.4;
-        for (let i = 0; i < nodes.length; i++) {
-          const alive = (s.boss.nodes[i] ?? 0) > 0;
-          const mat = nodeMats[i];
-          if (mat) mat.emissiveIntensity = alive ? 3 + Math.sin(time * 6 + i) * 1.5 : 0;
-          const node = nodes[i];
-          if (node) node.scale.setScalar(alive ? 1 : 0.6);
-        }
-        if (s.phase === 'jump' || s.phase === 'won') boss.visible = false;
+        ossuary.root.position.set(s.boss.x, s.boss.y, s.boss.z + sh.vz * since * holding);
+        ossuary.root.rotation.y = Math.sin(time * 0.05) * 0.15;
+        ossuary.update(time, s.boss.nodes);
       } else {
-        boss.visible = false;
+        ossuary.root.visible = false;
       }
     },
     dispose() {
-      for (const g of [shardGeo, chaserGeo, pBoltGeo, eBoltGeo, bossBodyGeo, ringGeo, nodeGeo]) g.dispose();
-      for (const m of [shardMat, chaserMat, playerBoltMat, enemyBoltMat, bossBodyMat, ringMat, ...nodeMats])
+      for (const g of [
+        needle.hull,
+        needle.rust,
+        needle.glow,
+        moth.hull,
+        moth.rust,
+        moth.glow,
+        moth.wing,
+        moth.wingGlow,
+        pBoltGeo,
+        missileGeo,
+        eBoltGeo,
+      ])
+        g.dispose();
+      for (const m of [hullMat, rustMat, glowMat, membraneMat, playerBoltMat, missileMat, enemyBoltMat])
         m.dispose();
+      ossuary.dispose();
     },
   };
 }

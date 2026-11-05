@@ -1,3 +1,11 @@
+import {
+  DIFFICULTY_LABELS,
+  DIFFICULTY_PRESETS,
+  DIFFICULTY_RANGES,
+  clampSettings,
+  type DifficultyName,
+  type DifficultySettings,
+} from '../../sim/difficulty';
 import { cls, el } from '../dom';
 import styles from './screens.module.css';
 
@@ -11,7 +19,7 @@ export interface EndData {
 }
 
 export interface ScreenHandlers {
-  onLaunch(): void;
+  onLaunch(difficulty: DifficultySettings): void;
   onResume(): void;
   onRestart(): void;
   onRest(): void;
@@ -21,17 +29,51 @@ export interface ScreenHandlers {
 export interface Screens {
   show(kind: ScreenKind, data?: EndData): void;
   readonly current: ScreenKind;
+  readonly difficulty: DifficultySettings;
+}
+
+const STORE_KEY = 'void.difficulty.v1';
+
+interface Stored {
+  name: DifficultyName;
+  custom: DifficultySettings;
+}
+
+function load(): Stored {
+  const fallback: Stored = { name: 'standard', custom: { ...DIFFICULTY_PRESETS.standard } };
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<Stored>;
+    const name = parsed.name && parsed.name in DIFFICULTY_LABELS ? parsed.name : 'standard';
+    return { name, custom: clampSettings({ ...fallback.custom, ...(parsed.custom ?? {}) }) };
+  } catch {
+    return fallback;
+  }
+}
+
+function save(s: Stored): void {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(s));
+  } catch {
+    // Storage blocked (private mode): the choice simply isn't remembered.
+  }
 }
 
 /**
- * Hick's law: the start screen has ONE action. Pause ≤ 4 actions, primary first, Rest last (Serial Position).
- * Peak-End: the end card is calm and dignified, win or lose. "Rest" is a first-class choice.
+ * Hick's law: the start screen has ONE primary action; difficulty sits beneath it with a sensible
+ * default. Pause ≤ 4 actions, primary first, Rest last (Serial Position). Peak-End: the end card is
+ * calm and dignified, win or lose. "Rest" is a first-class choice.
  */
 export function createScreens(parent: HTMLElement, h: ScreenHandlers): Screens {
   const layer = el('div', styles.layer, undefined, parent);
   layer.dataset.open = 'false';
   let current: ScreenKind = 'none';
   let previous: ScreenKind = 'none';
+  const stored = load();
+
+  const settings = (): DifficultySettings =>
+    stored.name === 'custom' ? clampSettings(stored.custom) : DIFFICULTY_PRESETS[stored.name];
 
   const panel = (): HTMLElement => {
     layer.replaceChildren();
@@ -59,15 +101,56 @@ export function createScreens(parent: HTMLElement, h: ScreenHandlers): Screens {
     el('dd', styles.statValue, value, s);
   };
 
+  const renderDifficulty = (p: HTMLElement): void => {
+    const box = el('fieldset', styles.difficulty, undefined, p);
+    el('legend', styles.small, 'Difficulty', box);
+    const seg = el('div', styles.segmented, undefined, box);
+    const customBox = el('div', styles.sliders, undefined, box);
+    const names = Object.keys(DIFFICULTY_LABELS) as DifficultyName[];
+    for (const name of names) {
+      const label = el('label', styles.segment, undefined, seg);
+      const input = el('input', undefined, undefined, label);
+      input.type = 'radio';
+      input.name = 'difficulty';
+      input.value = name;
+      input.checked = stored.name === name;
+      el('span', undefined, DIFFICULTY_LABELS[name], label);
+      input.addEventListener('change', () => {
+        stored.name = name;
+        save(stored);
+        customBox.dataset.open = String(name === 'custom');
+      });
+    }
+    customBox.dataset.open = String(stored.name === 'custom');
+    for (const key of Object.keys(DIFFICULTY_RANGES) as (keyof DifficultySettings)[]) {
+      const range = DIFFICULTY_RANGES[key];
+      const row = el('label', styles.slider, undefined, customBox);
+      el('span', undefined, range.label, row);
+      const input = el('input', undefined, undefined, row);
+      input.type = 'range';
+      input.min = String(range.min);
+      input.max = String(range.max);
+      input.step = String(range.step);
+      input.value = String(stored.custom[key]);
+      const out = el('output', undefined, Number(stored.custom[key]).toFixed(2), row);
+      input.addEventListener('input', () => {
+        stored.custom[key] = Number(input.value);
+        out.textContent = Number(input.value).toFixed(2);
+        save(stored);
+      });
+    }
+  };
+
   const renderControls = (p: HTMLElement): void => {
     const dl = el('dl', styles.controls, undefined, p);
     const rows: [string, string][] = [
+      ['1 · 2 · 3', 'Take the pilot, dorsal or ventral seat'],
+      ['Tab', 'Next seat'],
       ['W A S D', 'Steer (pilot)'],
-      ['Mouse', 'Aim'],
+      ['Mouse', 'Aim (pilot) · turn the turret (gunner)'],
       ['Click / Space', 'Fire'],
-      ['Shift', 'Boost (pilot)'],
-      ['X', 'Brake (pilot)'],
-      ['Tab', 'Swap seat with the bot'],
+      ['Shift · X', 'Boost · brake (pilot)'],
+      ['C', 'Cockpit / outside view'],
       ['Esc', 'Pause'],
       ['H', 'This sheet'],
     ];
@@ -75,11 +158,15 @@ export function createScreens(parent: HTMLElement, h: ScreenHandlers): Screens {
       el('dt', undefined, k, dl);
       el('dd', undefined, v, dl);
     }
+    el('p', styles.small, 'Fly through or shoot salvage pods to collect power-ups.', p);
   };
 
   const api: Screens = {
     get current() {
       return current;
+    },
+    get difficulty() {
+      return settings();
     },
     show(kind, data) {
       if (kind === 'controls' && current !== 'controls') previous = current;
@@ -98,12 +185,13 @@ export function createScreens(parent: HTMLElement, h: ScreenHandlers): Screens {
           el(
             'p',
             styles.lede,
-            'Beyond the last light, something is calling. Take the ship and answer it.',
+            'Beyond the last light, something is calling. Crew the VESPER and answer it.',
             p,
           );
           const actions = el('div', styles.actions, undefined, p);
-          focus = button(actions, 'Launch', h.onLaunch, true);
-          el('p', styles.small, 'Solo with a bot gunner · Tab swaps seats · H for controls', p);
+          focus = button(actions, 'Launch', () => h.onLaunch(settings()), true);
+          renderDifficulty(p);
+          el('p', styles.small, '1 · 2 · 3 change seat · bots crew the others · H for controls', p);
           break;
         }
         case 'pause': {
@@ -129,7 +217,7 @@ export function createScreens(parent: HTMLElement, h: ScreenHandlers): Screens {
             'p',
             styles.lede,
             won
-              ? 'The Warden falls silent. Its last signal points further out, past the edge of the map.'
+              ? 'The Ossuary falls silent. Its last signal points further out, past the edge of the map.'
               : 'The drift carried you home. The signal is still out there, and it is still calling.',
             p,
           );

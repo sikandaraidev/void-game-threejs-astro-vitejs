@@ -19,19 +19,22 @@ export interface Dust {
   dispose(): void;
 }
 
-const COUNT = 320;
+const COUNT = 220;
 const SPAN_X = 70;
 const SPAN_Y = 45;
 const AHEAD = 190;
 const BEHIND = 25;
+/** Keep motes out of the camera's face: a streak 10 cm from the lens fills the screen. */
+const CLEAR_X = 7;
+const CLEAR_Y = 5;
 
 export function createDust(scene: Scene): Dust {
   const rand = mulberry32(5);
-  const geo = new BoxGeometry(0.035, 0.035, 1);
+  const geo = new BoxGeometry(0.025, 0.025, 1);
   const mat = new MeshBasicMaterial({
     color: new Color('#8fb8ff'),
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.3,
     depthWrite: false,
   });
   const mesh = new InstancedMesh(geo, mat, COUNT);
@@ -52,7 +55,7 @@ export function createDust(scene: Scene): Dust {
   return {
     update(camera, speed) {
       const c = camera.position;
-      const len = Math.min(60, 0.4 + speed * 0.025 + Math.max(0, speed - 100) * 0.1);
+      const len = Math.min(40, 0.3 + speed * 0.015 + Math.max(0, speed - 100) * 0.08);
       for (let i = 0; i < COUNT; i++) {
         // Wrap in camera space so dust is always around us.
         let dz = (z[i] ?? 0) - c.z;
@@ -66,6 +69,9 @@ export function createDust(scene: Scene): Dust {
         if (Math.abs(dx) > SPAN_X) x[i] = c.x - Math.sign(dx) * SPAN_X;
         dx = (y[i] ?? 0) - c.y;
         if (Math.abs(dx) > SPAN_Y) y[i] = c.y - Math.sign(dx) * SPAN_Y;
+        const ox = (x[i] ?? 0) - c.x;
+        const oy = (y[i] ?? 0) - c.y;
+        if (Math.abs(ox) < CLEAR_X && Math.abs(oy) < CLEAR_Y) x[i] = c.x + (ox < 0 ? -CLEAR_X : CLEAR_X);
         dummy.position.set(x[i] ?? 0, y[i] ?? 0, z[i] ?? 0);
         dummy.scale.set(1, 1, len);
         dummy.updateMatrix();

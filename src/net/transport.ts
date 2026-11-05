@@ -1,3 +1,4 @@
+import type { DifficultySettings } from '../sim/difficulty';
 import type { FromSim, Seat, SeatInput, Snapshot, ToSim } from '../sim/types';
 
 /**
@@ -8,7 +9,7 @@ import type { FromSim, Seat, SeatInput, Snapshot, ToSim } from '../sim/types';
 export interface Transport {
   sendInput(seat: Seat, input: SeatInput): void;
   setHuman(seat: Seat, human: boolean): void;
-  reset(seed: number): void;
+  reset(seed: number, difficulty: DifficultySettings): void;
   pause(paused: boolean): void;
   onSnapshot(listener: (snapshot: Snapshot) => void): void;
   dispose(): void;
@@ -26,7 +27,7 @@ export function createLocalTransport(): Transport {
   return {
     sendInput: (seat, input) => send({ type: 'input', seat, input }),
     setHuman: (seat, human) => send({ type: 'control', seat, human }),
-    reset: (seed) => send({ type: 'reset', seed }),
+    reset: (seed, difficulty) => send({ type: 'reset', seed, difficulty }),
     pause: (paused) => send({ type: 'pause', paused }),
     onSnapshot: (l) => listeners.push(l),
     dispose: () => worker.terminate(),

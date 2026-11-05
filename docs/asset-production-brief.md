@@ -438,3 +438,28 @@ ChatGPT's image tool does not make audio. Codex can write procedural Web Audio c
 | Music              | Known space: heroic orchestral + synth pads. Fringe: choral. Edge: sparse drones |
 
 Formats: OGG (Vorbis) + M4A fallback, 44.1 kHz, loops seamless, SFX ≤ 2 s and normalised to −14 LUFS.
+
+---
+
+## 13. Status and canon (review of batch 1, 6 Nov 2026)
+
+Batch 1 was reviewed against this brief. It is strong and on-brief. These images are now **canon**, the single reference for each asset:
+
+| Asset                      | Canon image (in `I:\ALIYAN\void\ASSETS`)         | Notes                                                                                                                                  |
+| -------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| VESPER                     | `image-gen-1.png` + turnaround `image-gen-2.png` | H-frame: front crossbar with central turret hub, rear bridge, Lodestone hanging under the hub on cables. Model from `image-gen-2.png`. |
+| Needle                     | `image-gen-1(1).png`                             | Ready to model.                                                                                                                        |
+| Lamplighter                | `image-gen-3.png`                                | Ready to model (plus lantern torpedo).                                                                                                 |
+| The Ossuary                | `image-gen-4.png`                                | The **vertical cathedral** with four amber hearts in arched alcoves. Not the horizontal ribcage from the overview boards.              |
+| Pods                       | `VOID Salvage Power-Up Pods Board.png`           | Ready to model.                                                                                                                        |
+| HUD icons, decals, colours | `VOID Production Asset Board.png`                | Style reference only (see below).                                                                                                      |
+
+**Not canon:** the enemy names and designs invented on the overview boards (Scout, Raider, Carrier, Scarab, Ravager, Splicer), and the helix-ring VESPER variant. Enemy names stay **Needle, Moth, Lamplighter, Ossuary**.
+
+### Still needed (batch 2, in priority order)
+
+1. **`.glb` models** (the step that puts art in the game): VESPER, Needle, Moth, Ossuary, then pods and Lamplighter, built per §3 (Codex + Blender scripts, §2 Route A, using the canon images above as reference).
+2. **Moth concept + turnaround** (§6.2), including both wing states (folded and open). Not delivered yet.
+3. **Cockpit interior** (§5.1) and **turret interior** (§5.2) concepts, then models. The game now plays in first person, so these are seen all the time.
+4. **Separate files** instead of composite boards: each HUD icon as its own 128×128 transparent PNG (§9), the decal sheet as a transparent PNG, each PBR texture as its own tileable file (§8).
+5. **Sky panoramas**: 3 equirectangular 4096×2048 images, one per region (§8.6).

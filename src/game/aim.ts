@@ -1,5 +1,11 @@
 import { Vector3, type PerspectiveCamera, type Vector2 } from 'three/webgpu';
-import { BOSS_NODES, PILOT_BULLET_SPEED, TURRET_BULLET_SPEED, TURRET_OFFSET } from '../sim/constants';
+import {
+  BOSS_NODES,
+  PILOT_BULLET_SPEED,
+  PILOT_MUZZLE,
+  TURRET_BULLET_SPEED,
+  TURRET_OFFSETS,
+} from '../sim/constants';
 import { ENEMY_STRIDE, type Seat, type SeatInput, type Snapshot } from '../sim/types';
 
 /**
@@ -33,7 +39,8 @@ export function assistAim(
   const ship = s.ship;
   const shipVz = ship.vz;
   origin.set(ship.x + ship.vx * since, ship.y + ship.vy * since, ship.z + shipVz * since);
-  if (seat !== 'pilot') origin.add(v.set(TURRET_OFFSET.x, TURRET_OFFSET.y, TURRET_OFFSET.z));
+  if (seat === 'pilot') origin.add(v.set(0, PILOT_MUZZLE.y, PILOT_MUZZLE.z));
+  else origin.add(v.set(TURRET_OFFSETS[seat].x, TURRET_OFFSETS[seat].y, TURRET_OFFSETS[seat].z));
 
   const radius = strength; // in NDC units, aspect-corrected
   let bestD = radius * radius;

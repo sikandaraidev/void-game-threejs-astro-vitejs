@@ -1,15 +1,17 @@
-import type { Seat, Snapshot } from '../../sim/types';
+import { SHIELD_MAX } from '../../sim/constants';
+import { SEATS, type Seat, type Snapshot } from '../../sim/types';
 import { setCssVar } from '../cssVar';
 import { cls, el } from '../dom';
 import styles from './hud.module.css';
 
 export const ZONE_NAMES = ['The Lantern Reach', 'Ashfall Drift', 'The Quiet Shelf'] as const;
-export const DESTINATION_NAME = 'The Warden';
+export const DESTINATION_NAME = 'The Ossuary';
+const SEAT_LABEL: Record<Seat, string> = { pilot: 'Pilot', dorsal: 'Dorsal gun', ventral: 'Ventral gun' };
 
 export interface Hud {
   setVisible(visible: boolean): void;
   setSeat(seat: Seat): void;
-  update(s: Snapshot, mouseX: number, mouseY: number, locked: boolean): void;
+  update(s: Snapshot, reticleX: number, reticleY: number, locked: boolean): void;
   hint(text: string, seconds?: number): void;
   damage(amount: number): void;
   flash(amount: number): void;
@@ -32,6 +34,7 @@ export function createHud(parent: HTMLElement): Hud {
   const damageLayer = el('div', styles.damage, undefined, root);
   const flashLayer = el('div', styles.flash, undefined, root);
 
+  // Top centre: run progress (Goal-Gradient).
   const progress = el('div', styles.progress, undefined, root);
   const progressLabel = el('span', styles.progressLabel, '', progress);
   const track = el('div', styles.track, undefined, progress);
@@ -42,18 +45,36 @@ export function createHud(parent: HTMLElement): Hud {
   const bossLabel = el('span', styles.bossLabel, '', progress);
   bossLabel.dataset.visible = 'false';
 
-  const seatBox = el('div', styles.seat, undefined, root);
-  const seatName = el('span', styles.seatName, '', seatBox);
-  const seatSwap = el('span', styles.dim, '', seatBox);
+  // Top left: crew panel (Common Region; recognition over recall: the keys are shown).
+  const crew = el('div', styles.crew, undefined, root);
+  const seatRows = SEATS.map((seat, i) => {
+    const row = el('div', styles.crewRow, undefined, crew);
+    el('span', styles.key, String(i + 1), row);
+    el('span', styles.crewName, SEAT_LABEL[seat], row);
+    const who = el('span', styles.crewWho, 'Bot', row);
+    return { seat, row, who };
+  });
+  el('span', styles.dim, 'C · outside view', crew);
 
   const score = el('div', styles.score, '0', root);
 
+  // Bottom left: shared ship vitals.
   const vitals = el('div', styles.vitals, undefined, root);
   const hull = meter(vitals, 'Hull');
   const shield = meter(vitals, 'Shield', styles.shield);
 
+  // Bottom right: only YOUR station's meter (Cognitive Load).
   const role = el('div', styles.role, undefined, root);
   const roleMeter = meter(role, 'Boost');
+
+  // Bottom centre: active power-ups.
+  const buffs = el('div', styles.buffs, undefined, root);
+  const buffChips = {
+    overcharge: el('span', cls(styles.chip, styles.chipHot), '', buffs),
+    coolant: el('span', cls(styles.chip, styles.chipCold), '', buffs),
+    pulse: el('span', cls(styles.chip, styles.chipSignal), '', buffs),
+    missiles: el('span', cls(styles.chip, styles.chipMissile), '', buffs),
+  };
 
   const reticle = el('div', styles.reticle, undefined, root);
   const hintEl = el('div', styles.hint, '', root);
@@ -63,10 +84,14 @@ export function createHud(parent: HTMLElement): Hud {
   let hintTime = 0;
   let hit = 0;
   let flash = 0;
-  // Only touch the DOM when a value changes.
   let lastScore = -1;
   let lastLabel = '';
   let lastBoss = '';
+
+  const chip = (node: HTMLElement, text: string): void => {
+    if (node.textContent !== text) node.textContent = text;
+    node.dataset.visible = String(text !== '');
+  };
 
   return {
     setVisible(visible) {
@@ -74,11 +99,10 @@ export function createHud(parent: HTMLElement): Hud {
     },
     setSeat(next) {
       seat = next;
-      seatName.textContent = next === 'pilot' ? 'Pilot' : 'Gunner';
-      seatSwap.textContent = next === 'pilot' ? 'Tab · take gunner' : 'Tab · take pilot';
-      roleMeter.text.textContent = next === 'pilot' ? 'Boost' : 'Turret heat';
+      reticle.dataset.mode = next === 'pilot' ? 'free' : 'center';
+      for (const r of seatRows) r.row.dataset.active = String(r.seat === next);
     },
-    update(s, mouseX, mouseY, locked) {
+    update(s, reticleX, reticleY, locked) {
       setCssVar(fill, '--fill', s.progress.toFixed(4));
 
       const label =
@@ -93,36 +117,49 @@ export function createHud(parent: HTMLElement): Hud {
         progressLabel.textContent = label;
         lastLabel = label;
       }
-
-      const nodesLeft = s.boss ? s.boss.nodes.filter((h) => h > 0).length : 0;
-      const bossText = s.phase === 'boss' ? `Destroy the amber nodes · ${nodesLeft} left` : '';
+      const hearts = s.boss ? s.boss.nodes.filter((h) => h > 0).length : 0;
+      const bossText = s.phase === 'boss' ? `Destroy the amber hearts · ${hearts} left` : '';
       if (bossText !== lastBoss) {
         bossLabel.textContent = bossText;
         bossLabel.dataset.visible = String(bossText !== '');
         lastBoss = bossText;
       }
-
       if (s.score !== lastScore) {
         score.textContent = s.score.toLocaleString('en-US');
         lastScore = s.score;
       }
 
+      for (const r of seatRows) {
+        const text = r.seat === seat ? 'You' : s.humans[r.seat] ? 'Crew' : 'Bot';
+        if (r.who.textContent !== text) r.who.textContent = text;
+      }
+
       setCssVar(hull.bar, '--v', (s.hull / 100).toFixed(3));
       hull.root.dataset.low = String(s.hull < 30);
-      setCssVar(shield.bar, '--v', (s.shield / 100).toFixed(3));
+      setCssVar(shield.bar, '--v', (s.shield / SHIELD_MAX).toFixed(3));
 
       if (seat === 'pilot') {
+        roleMeter.text.textContent = 'Boost';
         setCssVar(roleMeter.bar, '--v', (s.boost / 100).toFixed(3));
         roleMeter.root.dataset.hot = 'false';
       } else {
-        setCssVar(roleMeter.bar, '--v', s.heat.toFixed(3));
-        roleMeter.root.dataset.hot = String(s.overheated);
-        roleMeter.text.textContent = s.overheated ? 'Turret overheated' : 'Turret heat';
+        const t = s.turrets[seat];
+        roleMeter.text.textContent =
+          s.buffs.coolant > 0 ? 'Coolant active' : t.overheated ? 'Overheated' : 'Barrel heat';
+        setCssVar(roleMeter.bar, '--v', t.heat.toFixed(3));
+        roleMeter.root.dataset.hot = String(t.overheated);
       }
 
-      setCssVar(reticle, '--x', mouseX.toFixed(4));
-      setCssVar(reticle, '--y', mouseY.toFixed(4));
-      // Amber ring = a target is locked: shots will lead it.
+      chip(
+        buffChips.overcharge,
+        s.buffs.overcharge > 0 ? `Overcharge ${Math.ceil(s.buffs.overcharge)}s` : '',
+      );
+      chip(buffChips.coolant, s.buffs.coolant > 0 ? `Coolant ${Math.ceil(s.buffs.coolant)}s` : '');
+      chip(buffChips.pulse, s.buffs.pulse > 0 ? `Pulse ${Math.ceil(s.buffs.pulse)}s` : '');
+      chip(buffChips.missiles, s.buffs.missiles > 0 ? `Missiles ×${s.buffs.missiles}` : '');
+
+      setCssVar(reticle, '--x', reticleX.toFixed(4));
+      setCssVar(reticle, '--y', reticleY.toFixed(4));
       reticle.dataset.locked = String(locked);
     },
     hint(text, seconds = 5) {

@@ -3,6 +3,9 @@
  * Simple stereo placement by lateral offset; full spatial audio arrives with the art pass.
  */
 export type Sfx =
+  | 'missileFire'
+  | 'pickup'
+  | 'wingsOpen'
   | 'pilotFire'
   | 'turretFire'
   | 'enemyFire'
@@ -34,6 +37,9 @@ const MIN_GAP: Record<Sfx, number> = {
   hullHit: 0.08,
   overheat: 0.5,
   jump: 1,
+  missileFire: 0.08,
+  pickup: 0.1,
+  wingsOpen: 0.3,
 };
 
 export function createAudio(): Audio {
@@ -155,6 +161,17 @@ export function createAudio(): Audio {
         case 'jump':
           burst(3.5, 0.6, 300, 0, 8000);
           tone('sine', 60, 900, 3, 0.3, 0);
+          break;
+        case 'missileFire':
+          burst(0.5, 0.25, 4000, pan, 600);
+          tone('sawtooth', 220, 660, 0.35, 0.06, pan);
+          break;
+        case 'pickup':
+          tone('sine', 660, 1320, 0.18, 0.18, pan);
+          tone('triangle', 990, 1980, 0.25, 0.1, pan);
+          break;
+        case 'wingsOpen':
+          tone('sawtooth', 90, 260, 0.7, 0.08 * intensity, pan);
           break;
       }
     },

@@ -1,7 +1,8 @@
 .label {
   position: fixed;
-  inset-block-start: var(--space-3);
-  inset-inline-start: var(--space-3);
+  inset-block-end: 4.5rem;
+  inset-inline-end: var(--space-3);
+  z-index: 1;
   padding: var(--space-1) var(--space-2);
   border: var(--hairline);
   background: color-mix(in oklab, var(--color-void-raised) 80%, transparent);

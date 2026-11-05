@@ -9,7 +9,7 @@ import { createWorld, snapshotOf, stepWorld, type World } from './world';
  */
 declare const self: DedicatedWorkerGlobalScope;
 
-let world: World = createWorld(1);
+let world: World = createWorld(1, {});
 let paused = false;
 let last = performance.now();
 let acc = 0;
@@ -18,7 +18,12 @@ function post(events: SimEvent[]): void {
   const snapshot = snapshotOf(world);
   snapshot.events = events;
   const msg: FromSim = { type: 'snapshot', snapshot };
-  self.postMessage(msg, [snapshot.enemies.buffer, snapshot.playerBullets.buffer, snapshot.enemyBolts.buffer]);
+  self.postMessage(msg, [
+    snapshot.enemies.buffer,
+    snapshot.playerBullets.buffer,
+    snapshot.enemyBolts.buffer,
+    snapshot.pods.buffer,
+  ]);
 }
 
 function loop(): void {
@@ -51,7 +56,7 @@ self.onmessage = (ev: MessageEvent<ToSim>) => {
       world.humans[msg.seat] = msg.human;
       break;
     case 'reset':
-      world = createWorld(msg.seed, world.humans);
+      world = createWorld(msg.seed, world.humans, msg.difficulty);
       acc = 0;
       last = performance.now();
       break;

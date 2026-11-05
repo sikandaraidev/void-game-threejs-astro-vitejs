@@ -1,5 +1,8 @@
 import {
+  AdditiveBlending,
   BackSide,
+  Sprite,
+  SpriteNodeMaterial,
   Color,
   CubeCamera,
   CubeRenderTarget,
@@ -33,6 +36,8 @@ import {
   pow,
   sin,
   smoothstep,
+  uv,
+  vec2,
   vec3,
 } from 'three/tsl';
 
@@ -130,10 +135,26 @@ export function createSky(renderer: WebGPURenderer, size: number): Sky {
   root.name = 'sky';
   const sunMat = new MeshStandardNodeMaterial({ color: new Color('#000000') });
   sunMat.emissiveNode = color(new Color('#fff1d6')).mul(9);
-  const sunGeo = new SphereGeometry(12, 24, 16);
+  const sunGeo = new SphereGeometry(7, 24, 16);
   const sun = new Mesh(sunGeo, sunMat);
   sun.position.copy(SUN_DIRECTION).multiplyScalar(760);
   root.add(sun);
+  // Soft additive halo: the sun reads as a star even when bloom is off (low-end GPUs).
+  const haloMat = new SpriteNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+  });
+  const d = uv().sub(vec2(0.5, 0.5)).length().mul(2);
+  const core = pow(clamp(float(1).sub(d), 0, 1), float(6));
+  const wide = pow(clamp(float(1).sub(d), 0, 1), float(2.2)).mul(0.25);
+  haloMat.colorNode = color(new Color('#fff1d6'));
+  haloMat.opacityNode = core.add(wide);
+  const halo = new Sprite(haloMat);
+  halo.position.copy(sun.position);
+  halo.scale.setScalar(240);
+  halo.renderOrder = -5;
+  root.add(halo);
 
   return {
     root,
@@ -146,6 +167,7 @@ export function createSky(renderer: WebGPURenderer, size: number): Sky {
       target.dispose();
       sunGeo.dispose();
       sunMat.dispose();
+      haloMat.dispose();
     },
   };
 }

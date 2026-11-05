@@ -11,7 +11,12 @@ body {
 }
 
 /* Only the game canvas blocks browser gestures; menus keep pinch-zoom (WCAG 1.4.4). */
+
+/* The canvas always fills the stage. Its drawing-buffer size (pixel ratio) is set by the renderer;
+   without an explicit CSS size, lowering the pixel ratio would shrink and crop the picture. */
 .stage canvas {
+  inline-size: 100%;
+  block-size: 100%;
   touch-action: none;
 }
 
