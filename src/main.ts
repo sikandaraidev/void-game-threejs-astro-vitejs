@@ -26,15 +26,16 @@ async function boot(): Promise<void> {
   scene.background = new Color('#05060a');
 
   const camera = new PerspectiveCamera(55, 1, 0.1, 1000);
-  camera.position.set(-4.5, 1.8, 6.5);
-  camera.lookAt(0, 0, -1);
+  // Three-quarter front hero shot: the ship flies toward us, stars stream past behind it.
+  camera.position.set(5.2, 2.1, -6.8);
+  camera.lookAt(0, 0, 0);
 
-  scene.add(new HemisphereLight('#9fc8ff', '#05060a', 0.35));
-  const key = new DirectionalLight('#dfeaff', 2.2);
-  key.position.set(5, 6, 3);
+  scene.add(new HemisphereLight('#9fc8ff', '#05060a', 0.7));
+  const key = new DirectionalLight('#dfeaff', 3.2);
+  key.position.set(6, 7, -4);
   scene.add(key);
-  const rim = new DirectionalLight('#ffb347', 1.4);
-  rim.position.set(-6, -2, -5);
+  const rim = new DirectionalLight('#ffb347', 2);
+  rim.position.set(-6, 1, 5);
   scene.add(rim);
 
   const ship = createShip();

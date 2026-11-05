@@ -24,7 +24,7 @@ export function createPipeline(
   const scenePass = pass(scene, camera);
   scenePass.setMRT(mrt({ output, emissive }));
   const color = scenePass.getTextureNode('output');
-  const glow = bloom(scenePass.getTextureNode('emissive'), 1.1, 0.5, 0);
+  const glow = bloom(scenePass.getTextureNode('emissive'), 0.55, 0.3, 0);
 
   const pipeline = new RenderPipeline(renderer);
   pipeline.outputNode = color.add(glow);

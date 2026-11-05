@@ -29,12 +29,12 @@ export function createShip(): Ship {
   const engineGlow = new MeshStandardMaterial({
     color: new Color('#000000'),
     emissive: new Color('#6fe3ff'),
-    emissiveIntensity: 6,
+    emissiveIntensity: 2.2,
   });
   const navLight = new MeshStandardMaterial({
     color: new Color('#000000'),
     emissive: new Color('#ffb347'),
-    emissiveIntensity: 4,
+    emissiveIntensity: 1.6,
   });
 
   const geometries = [
