@@ -16,6 +16,8 @@ import {
  */
 export interface Ship {
   readonly root: Group;
+  /** 0..1+ engine output; brightens the exhaust (and therefore its bloom). */
+  setThrust(level: number): void;
   dispose(): void;
 }
 
@@ -95,6 +97,9 @@ export function createShip(): Ship {
 
   return {
     root,
+    setThrust(level) {
+      engineGlow.emissiveIntensity = 1.4 + level * 2.6;
+    },
     dispose() {
       for (const g of geometries) g.dispose();
       for (const m of [hull, panel, canopy, engineGlow, navLight]) m.dispose();

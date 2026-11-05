@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mulberry32 } from '../src/world/starfield';
+import { mulberry32 } from '../src/sim/rng';
 
 describe('mulberry32', () => {
   it('is deterministic for a seed', () => {

@@ -9,6 +9,8 @@
   /* One cold accent, one "wrongness" accent (amber is reserved for the signal and danger) */
   --color-cold: #6fe3ff;
   --color-signal: #ffb347;
+  --color-danger: #ff2a2a;
+  --color-flash: #e8f6ff;
 
   /* Type */
   --font-mono: ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', monospace;

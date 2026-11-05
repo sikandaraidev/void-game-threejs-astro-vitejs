@@ -15,6 +15,11 @@ body {
   touch-action: none;
 }
 
+/* The HUD reticle replaces the cursor during play. */
+.stage[data-playing='true'] canvas {
+  cursor: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
