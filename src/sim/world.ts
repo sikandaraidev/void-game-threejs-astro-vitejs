@@ -271,7 +271,7 @@ function spawnEnemy(w: World, kind: EnemyKind): void {
 }
 
 function enemyRadius(kind: number): number {
-  return kind === EnemyKind.Shard ? 2.3 : 1.9;
+  return kind === EnemyKind.Shard ? 3.4 : 2.8;
 }
 
 function aimBolt(w: World, ox: number, oy: number, oz: number, spread: number): void {

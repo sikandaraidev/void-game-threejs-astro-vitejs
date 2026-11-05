@@ -1,13 +1,22 @@
 import {
   BackSide,
   Color,
+  CubeCamera,
+  CubeRenderTarget,
+  DirectionalLight,
   Group,
+  HalfFloatType,
+  HemisphereLight,
+  LinearMipmapLinearFilter,
   Mesh,
   MeshBasicNodeMaterial,
   MeshStandardNodeMaterial,
+  Scene,
   SphereGeometry,
   Vector3,
   type Camera,
+  type CubeTexture,
+  type WebGPURenderer,
 } from 'three/webgpu';
 import {
   abs,
@@ -28,27 +37,33 @@ import {
 } from 'three/tsl';
 
 /**
- * The awe layer: a procedural nebula sky, a gas giant and a sun, all parented to the camera
- * so they read as infinitely far away (no parallax) while dust and enemies provide speed.
+ * The awe layer. The nebula and gas giant are expensive procedural shaders, so they are
+ * rendered ONCE at load into a cube texture (baked), then used as:
+ *   - scene.background (one cheap texture lookup per pixel instead of ~10 noise octaves), and
+ *   - scene.environment (image-based lighting: metal hulls reflect the nebula for free).
+ * Only the sun stays a live mesh, because it must bloom.
  * Known-space palette: saturated. Later regions will drain colour (Blueprint v3 §1).
  */
 export interface Sky {
+  /** Live part of the sky (the sun). Follows the camera. */
   readonly root: Group;
+  readonly texture: CubeTexture;
   /** Direction toward the sun, for the key light. */
   readonly sunDirection: Vector3;
   follow(camera: Camera): void;
   dispose(): void;
 }
 
-export function createSky(): Sky {
-  const root = new Group();
-  root.name = 'sky';
+const SUN_DIRECTION = new Vector3(0.55, 0.35, -0.75).normalize();
 
-  // Nebula dome. Bloom ignores it (no emissive), so the void stays deep.
+function buildBakeScene(): { scene: Scene; dispose: () => void } {
+  const scene = new Scene();
+
+  // Nebula dome.
   const dir = normalize(positionLocal);
   const warp = mx_fractal_noise_float(dir.mul(1.6), 3, 2.0, 0.5);
-  const n1 = mx_fractal_noise_float(dir.mul(2.4).add(vec3(warp, warp, warp)), 4, 2.0, 0.5);
-  const n2 = mx_fractal_noise_float(dir.mul(5.5).add(vec3(3.1, 1.7, 0.2)), 3, 2.0, 0.55);
+  const n1 = mx_fractal_noise_float(dir.mul(2.4).add(vec3(warp, warp, warp)), 5, 2.0, 0.5);
+  const n2 = mx_fractal_noise_float(dir.mul(5.5).add(vec3(3.1, 1.7, 0.2)), 4, 2.0, 0.55);
   // A tilted galactic band gives the sky a direction, like a real Milky Way.
   const bandAxis = dir.y.add(dir.x.mul(0.35)).add(n1.mul(0.3));
   const band = smoothstep(float(0.6), float(0.0), abs(bandAxis));
@@ -61,18 +76,14 @@ export function createSky(): Sky {
   const hue = mix(mix(indigo, teal, clamp(n2.add(0.5), 0, 1)), rose, clamp(warp.mul(1.4), 0, 1));
   const hot = mix(hue, ember, smoothstep(float(0.35), float(0.8), n2.mul(density)));
   const skyColor = mix(deep, hot, pow(density, float(1.6)).mul(0.55));
-
   const skyMat = new MeshBasicNodeMaterial({ side: BackSide, depthWrite: false });
   skyMat.colorNode = skyColor;
-  const skyGeo = new SphereGeometry(820, 48, 24);
-  const sky = new Mesh(skyGeo, skyMat);
-  sky.renderOrder = -10;
-  sky.frustumCulled = false;
-  root.add(sky);
+  const skyGeo = new SphereGeometry(900, 64, 32);
+  scene.add(new Mesh(skyGeo, skyMat));
 
-  // Gas giant with banded clouds and a glowing atmospheric rim (rim is emissive, so it blooms softly).
+  // Gas giant with banded clouds and an atmospheric rim.
   const p = positionLocal.mul(1 / 190);
-  const bandsN = mx_fractal_noise_float(p.mul(vec3(1.5, 6, 1.5)), 4, 2.0, 0.5);
+  const bandsN = mx_fractal_noise_float(p.mul(vec3(1.5, 6, 1.5)), 5, 2.0, 0.5);
   const stripes = sin(p.y.mul(18).add(bandsN.mul(4)))
     .mul(0.5)
     .add(0.5);
@@ -80,31 +91,61 @@ export function createSky(): Sky {
   const rim = pow(float(1).sub(clamp(dot(normalView, positionViewDirection), 0, 1)), float(3.5));
   const planetMat = new MeshStandardNodeMaterial({ roughness: 0.9, metalness: 0 });
   planetMat.colorNode = planetCol;
-  planetMat.emissiveNode = color(new Color('#4fb7ff')).mul(rim).mul(1.6);
-  const planetGeo = new SphereGeometry(190, 96, 64);
+  planetMat.emissiveNode = color(new Color('#4fb7ff')).mul(rim).mul(0.9);
+  const planetGeo = new SphereGeometry(190, 128, 96);
   const planet = new Mesh(planetGeo, planetMat);
   planet.position.set(-300, -150, -480);
   planet.rotation.z = 0.35;
-  root.add(planet);
+  scene.add(planet);
 
-  // Sun: a small, very bright emissive disc. Bloom turns it into a halo.
-  const sunDirection = new Vector3(0.55, 0.35, -0.75).normalize();
+  const sunLight = new DirectionalLight('#fff1d6', 3);
+  sunLight.position.copy(SUN_DIRECTION).multiplyScalar(100);
+  scene.add(sunLight, new HemisphereLight('#3a2f6e', '#05060a', 0.15));
+
+  return {
+    scene,
+    dispose() {
+      skyGeo.dispose();
+      planetGeo.dispose();
+      skyMat.dispose();
+      planetMat.dispose();
+    },
+  };
+}
+
+export function createSky(renderer: WebGPURenderer, size: number): Sky {
+  // Bake.
+  const target = new CubeRenderTarget(size, {
+    type: HalfFloatType,
+    generateMipmaps: true,
+    minFilter: LinearMipmapLinearFilter,
+  });
+  const cubeCamera = new CubeCamera(1, 2000, target);
+  const bake = buildBakeScene();
+  cubeCamera.update(renderer, bake.scene);
+  bake.dispose();
+
+  // Live sun: a small, very bright emissive disc; bloom turns it into a halo.
+  const root = new Group();
+  root.name = 'sky';
   const sunMat = new MeshStandardNodeMaterial({ color: new Color('#000000') });
   sunMat.emissiveNode = color(new Color('#fff1d6')).mul(9);
   const sunGeo = new SphereGeometry(12, 24, 16);
   const sun = new Mesh(sunGeo, sunMat);
-  sun.position.copy(sunDirection).multiplyScalar(760);
+  sun.position.copy(SUN_DIRECTION).multiplyScalar(760);
   root.add(sun);
 
   return {
     root,
-    sunDirection,
+    texture: target.texture,
+    sunDirection: SUN_DIRECTION,
     follow(camera) {
       root.position.copy(camera.position);
     },
     dispose() {
-      for (const g of [skyGeo, planetGeo, sunGeo]) g.dispose();
-      for (const m of [skyMat, planetMat, sunMat]) m.dispose();
+      target.dispose();
+      sunGeo.dispose();
+      sunMat.dispose();
     },
   };
 }

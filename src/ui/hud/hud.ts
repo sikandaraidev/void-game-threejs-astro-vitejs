@@ -9,7 +9,7 @@ export const DESTINATION_NAME = 'The Warden';
 export interface Hud {
   setVisible(visible: boolean): void;
   setSeat(seat: Seat): void;
-  update(s: Snapshot, mouseX: number, mouseY: number): void;
+  update(s: Snapshot, mouseX: number, mouseY: number, locked: boolean): void;
   hint(text: string, seconds?: number): void;
   damage(amount: number): void;
   flash(amount: number): void;
@@ -78,7 +78,7 @@ export function createHud(parent: HTMLElement): Hud {
       seatSwap.textContent = next === 'pilot' ? 'Tab · take gunner' : 'Tab · take pilot';
       roleMeter.text.textContent = next === 'pilot' ? 'Boost' : 'Turret heat';
     },
-    update(s, mouseX, mouseY) {
+    update(s, mouseX, mouseY, locked) {
       setCssVar(fill, '--fill', s.progress.toFixed(4));
 
       const label =
@@ -122,7 +122,8 @@ export function createHud(parent: HTMLElement): Hud {
 
       setCssVar(reticle, '--x', mouseX.toFixed(4));
       setCssVar(reticle, '--y', mouseY.toFixed(4));
-      reticle.dataset.locked = String(seat === 'gunner' && s.overheated);
+      // Amber ring = a target is locked: shots will lead it.
+      reticle.dataset.locked = String(locked);
     },
     hint(text, seconds = 5) {
       hintEl.textContent = text;

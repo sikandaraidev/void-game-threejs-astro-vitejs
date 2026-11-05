@@ -134,12 +134,12 @@ export function createEntities(scene: Scene): Entities {
         dummy.position.set(x, y, z);
         if (e[o + 6] === EnemyKind.Shard) {
           dummy.rotation.set(0, time * 1.4 + o, 0);
-          dummy.scale.set(1.5, 2.5, 1.5);
+          dummy.scale.set(2.3, 3.8, 2.3);
           dummy.updateMatrix();
           shards.setMatrixAt(ns++, dummy.matrix);
         } else {
           look.set(x + (e[o + 3] ?? 0), y + (e[o + 4] ?? 0), z + (e[o + 5] ?? 0) - 1);
-          dummy.scale.set(1, 1, 1.8);
+          dummy.scale.set(1.5, 1.5, 2.6);
           dummy.lookAt(look);
           dummy.rotateZ(time * 3);
           dummy.updateMatrix();

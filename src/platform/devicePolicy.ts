@@ -23,6 +23,8 @@ export interface DevicePolicy {
   readonly bloom: boolean;
   readonly starCount: number;
   readonly cameraMotion: boolean;
+  /** Face size of the baked sky cube texture. */
+  readonly skySize: number;
 }
 
 export function choosePreset(info: DeviceInfo): QualityPreset {
@@ -33,7 +35,9 @@ export function choosePreset(info: DeviceInfo): QualityPreset {
 }
 
 const STARS: Record<QualityPreset, number> = { low: 2_000, medium: 5_000, high: 9_000 };
-const DPR_CAP: Record<QualityPreset, number> = { low: 1, medium: 1.5, high: 2 };
+// Integrated GPUs are fill-rate bound: keep pixel ratios modest; adaptive quality lowers them further.
+const DPR_CAP: Record<QualityPreset, number> = { low: 1, medium: 1.25, high: 1.75 };
+const SKY_SIZE: Record<QualityPreset, number> = { low: 512, medium: 768, high: 1024 };
 
 export function decidePolicy(info: DeviceInfo): DevicePolicy {
   const preset = choosePreset(info);
@@ -45,6 +49,7 @@ export function decidePolicy(info: DeviceInfo): DevicePolicy {
     bloom: preset !== 'low',
     starCount: STARS[preset],
     cameraMotion: !info.prefersReducedMotion,
+    skySize: SKY_SIZE[preset],
   };
 }
 

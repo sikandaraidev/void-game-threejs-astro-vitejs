@@ -1,12 +1,4 @@
-import {
-  Clock,
-  Color,
-  DirectionalLight,
-  HemisphereLight,
-  PerspectiveCamera,
-  Scene,
-  Vector3,
-} from 'three/webgpu';
+import { Clock, DirectionalLight, HemisphereLight, PerspectiveCamera, Scene, Vector3 } from 'three/webgpu';
 import { createAudio, type Sfx } from './audio/audio';
 import { createRenderer } from './bootstrap/renderer';
 import { FEATURES } from './features';
@@ -17,6 +9,8 @@ import { decidePolicy, probeDevice } from './platform/devicePolicy';
 import { createDust } from './render/fx/dust';
 import { createSparks } from './render/fx/sparks';
 import { createPipeline } from './render/post/pipeline';
+import { createAdaptiveQuality } from './platform/adaptiveQuality';
+import { assistAim } from './game/aim';
 import { createEntities } from './render/world/entities';
 import { createSky } from './render/world/sky';
 import { ENEMY_STRIDE, EnemyKind, PHASES, emptyInput, type Seat, type Snapshot } from './sim/types';
@@ -27,6 +21,9 @@ import { createShip } from './world/ship';
 import { createStarfield } from './world/starfield';
 
 type Mode = 'attract' | 'playing' | 'paused' | 'ended';
+
+/** Aim-assist radius in screen units (0 = off). Becomes a difficulty setting. */
+const AIM_ASSIST = 0.12;
 
 /** Factory wiring and the frame loop. Game rules live in src/sim (worker). */
 async function boot(): Promise<void> {
@@ -41,15 +38,18 @@ async function boot(): Promise<void> {
 
   // Scene
   const scene = new Scene();
-  scene.background = new Color('#05060a');
   const camera = new PerspectiveCamera(62, 1, 0.1, 1200);
 
-  const sky = createSky();
+  // Sky is baked once into a cube texture: cheap background + reflections on every hull.
+  const sky = createSky(renderer, policy.skySize);
+  scene.background = sky.texture;
+  scene.environment = sky.texture;
+  scene.environmentIntensity = 0.7;
   scene.add(sky.root);
   const stars = FEATURES.starfield ? createStarfield(policy.starCount) : null;
   if (stars) scene.add(stars.points);
 
-  scene.add(new HemisphereLight('#7f9cff', '#120a18', 0.6));
+  scene.add(new HemisphereLight('#7f9cff', '#120a18', 0.3));
   const sunLight = new DirectionalLight('#fff1d6', 3.2);
   sunLight.position.copy(sky.sunDirection).multiplyScalar(100);
   scene.add(sunLight);
@@ -62,7 +62,11 @@ async function boot(): Promise<void> {
   const entities = createEntities(scene);
   const sparks = createSparks(scene);
   const dust = createDust(scene);
-  const pipeline = createPipeline(renderer, scene, camera, FEATURES.bloom && policy.bloom);
+  let pipeline = createPipeline(renderer, scene, camera, FEATURES.bloom && policy.bloom);
+  const adaptive = createAdaptiveQuality(
+    { dpr: policy.maxDpr, floor: 0.65, targetMs: 22, warmupSeconds: 3, step: 0.15 },
+    pipeline !== null,
+  );
 
   // Systems
   const audio = createAudio();
@@ -287,8 +291,21 @@ async function boot(): Promise<void> {
   let t = 0;
 
   const frame = (): void => {
-    const dt = Math.min(clock.getDelta(), 1 / 20);
+    const rawDt = clock.getDelta();
+    const dt = Math.min(rawDt, 1 / 20);
     t += dt;
+
+    if (mode !== 'paused') {
+      const change = adaptive.sample(rawDt);
+      if (change === 'dpr') {
+        renderer.setPixelRatio(adaptive.dpr);
+        resize();
+      } else if (change === 'bloom') {
+        pipeline?.dispose();
+        pipeline = null;
+      }
+      if (change) debugLabel?.set(`${backend} · dpr ${adaptive.dpr.toFixed(2)} · bloom ${adaptive.bloom}`);
+    }
 
     if (input.pressed('Escape')) {
       if (screens.current === 'controls') screens.show(mode === 'paused' ? 'pause' : 'none');
@@ -323,11 +340,16 @@ async function boot(): Promise<void> {
       const my = mode === 'playing' ? input.mouse.y : Math.sin(t * 0.13) * 0.15;
       rig.update(viewSeat, shipPos, shipVel, mx, my, speed, dt, s.phase === 'jump');
 
-      if (mode === 'playing') transport.sendInput(seat, input.build(seat, camera, inputBuf));
+      let locked = false;
+      if (mode === 'playing') {
+        input.build(seat, camera, inputBuf);
+        locked = assistAim(s, since, camera, input.mouse, seat, AIM_ASSIST, inputBuf).locked;
+        transport.sendInput(seat, inputBuf);
+      }
 
       entities.update(s, since, t);
       dust.update(camera, speed);
-      if (mode === 'playing') hud.update(s, input.mouse.x, input.mouse.y);
+      if (mode === 'playing') hud.update(s, input.mouse.x, input.mouse.y, locked);
       audio.engine(Math.min(1, speed / 90));
     }
 
