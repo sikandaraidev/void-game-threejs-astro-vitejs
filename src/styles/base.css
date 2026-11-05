@@ -1,0 +1,25 @@
+body {
+  background: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+.stage {
+  position: fixed;
+  inset: 0;
+}
+
+/* Only the game canvas blocks browser gestures; menus keep pinch-zoom (WCAG 1.4.4). */
+.stage canvas {
+  touch-action: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms;
+    transition-duration: 1ms;
+  }
+}

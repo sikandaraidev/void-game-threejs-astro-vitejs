@@ -1,0 +1,28 @@
+/* Design tokens: the only place raw colours and sizes live. See Blueprint v3 §6. */
+:root {
+  /* Void and light */
+  --color-void: #05060a;
+  --color-void-raised: #0b0e16;
+  --color-ink: #d9e2ef;
+  --color-ink-dim: #7d8aa0;
+
+  /* One cold accent, one "wrongness" accent (amber is reserved for the signal and danger) */
+  --color-cold: #6fe3ff;
+  --color-signal: #ffb347;
+
+  /* Type */
+  --font-mono: ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  --font-sans: system-ui, 'Inter', 'IBM Plex Sans', sans-serif;
+  --text-xs: clamp(0.6875rem, 0.65rem + 0.15vw, 0.75rem);
+  --text-sm: clamp(0.8125rem, 0.78rem + 0.2vw, 0.875rem);
+
+  /* Space and lines */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --hairline: 1px solid color-mix(in oklab, var(--color-cold) 35%, transparent);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+}
